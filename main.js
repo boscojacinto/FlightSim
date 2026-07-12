@@ -90,15 +90,24 @@ function hash2(ix, iz) {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-// Smooth rolling terrain height (metres) away from the airfield.
+// The approach corridor: a flat, obstacle-free valley the runway sits in and
+// the aircraft spawns above, so you always have clear air on final.
+const CORRIDOR = { halfW: 260, ramp: 320, z0: -3400, z1: 800 };
+function corridorClear(x, z) {
+  if (z < CORRIDOR.z0 || z > CORRIDOR.z1) return 1;
+  return clamp((Math.abs(x) - CORRIDOR.halfW) / CORRIDOR.ramp, 0, 1);
+}
+
+// Smooth rolling terrain height (metres) away from the airfield and corridor.
 function terrainHeight(x, z) {
   const d = Math.hypot(x, z);
-  const flat = clamp((d - 900) / 1600, 0, 1); // keep the airfield flat
+  const flat = clamp((d - 900) / 1600, 0, 1);          // keep the airfield flat
+  const factor = Math.min(flat, corridorClear(x, z));  // and the approach valley
   const h =
     Math.sin(x * 0.0016) * Math.cos(z * 0.0013) * 90 +
     Math.sin(x * 0.0007 + 1.3) * Math.cos(z * 0.0009 - 0.7) * 220 +
     Math.sin((x + z) * 0.0032) * 26;
-  return Math.max(0, h) * flat;
+  return Math.max(0, h) * factor;
 }
 
 // Terrain colour by height, blended toward fog with distance.
@@ -381,6 +390,9 @@ function drawMountains() {
       const oz = (hash2(ix, iz + 7) - 0.5) * S * 0.7;
       const bx = ix * S + ox, bz = iz * S + oz;
       if (Math.hypot(bx, bz) < 1100) continue; // keep peaks clear of the field
+      // Keep the approach corridor (and its ramped shoulders) free of peaks.
+      if (bz > CORRIDOR.z0 - 400 && bz < CORRIDOR.z1 + 400 &&
+          Math.abs(bx) < CORRIDOR.halfW + CORRIDOR.ramp + 400) continue;
       const baseH = terrainHeight(bx, bz);
       const height = 260 + hash2(ix + 3, iz + 3) * 620;
       const rad = 180 + hash2(ix + 5, iz + 1) * 220;

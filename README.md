@@ -6,6 +6,8 @@ no assets, no network. Just open the file and fly.
 
 ![HUD](https://img.shields.io/badge/renderer-canvas%202D-blue) ![deps](https://img.shields.io/badge/dependencies-0-brightgreen)
 
+![On final approach](screenshots/approach.png)
+
 ## Play
 
 Open **`index.html`** in a browser and click **Start Flight**.
