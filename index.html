@@ -1,0 +1,34 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>FlightSim — Browser Flight Simulator</title>
+<link rel="stylesheet" href="style.css" />
+
+<canvas id="view"></canvas>
+
+<div id="overlay">
+  <div id="menu">
+    <h1>FLIGHT<span>SIM</span></h1>
+    <p class="tag">A self-contained 3D flight simulator. No installs, no downloads.</p>
+    <button id="startBtn">▶ Start Flight</button>
+    <div class="controls">
+      <div class="col">
+        <h3>Attitude</h3>
+        <div class="key"><kbd>W</kbd> / <kbd>S</kbd> Pitch down / up</div>
+        <div class="key"><kbd>A</kbd> / <kbd>D</kbd> Roll left / right</div>
+        <div class="key"><kbd>Q</kbd> / <kbd>E</kbd> Rudder (yaw)</div>
+      </div>
+      <div class="col">
+        <h3>Engine &amp; System</h3>
+        <div class="key"><kbd>Shift</kbd> / <kbd>Ctrl</kbd> Throttle up / down</div>
+        <div class="key"><kbd>V</kbd> Camera (cockpit / chase)</div>
+        <div class="key"><kbd>R</kbd> Reset &nbsp; <kbd>P</kbd> Pause</div>
+      </div>
+    </div>
+    <p class="hint">Tip: keep your airspeed up on final approach and touch down gently on the runway.</p>
+  </div>
+</div>
+
+<div id="pausebadge" class="badge hidden">PAUSED — press P</div>
+<div id="msg" class="msg hidden"></div>
+
+<script src="main.js"></script>

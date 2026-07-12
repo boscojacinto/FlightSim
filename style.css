@@ -1,0 +1,142 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0e14;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #e6f0ff;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+/* ---------- Start menu overlay ---------- */
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 30%, rgba(20, 40, 70, 0.65), rgba(4, 8, 16, 0.92));
+  backdrop-filter: blur(3px);
+  z-index: 20;
+  transition: opacity 0.5s ease;
+}
+#overlay.hidden { opacity: 0; pointer-events: none; }
+
+#menu {
+  text-align: center;
+  padding: 40px 48px;
+  max-width: 620px;
+  border: 1px solid rgba(120, 180, 255, 0.25);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(16, 28, 48, 0.85), rgba(8, 14, 26, 0.9));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#menu h1 {
+  font-size: 58px;
+  letter-spacing: 8px;
+  font-weight: 800;
+  color: #eaf3ff;
+  text-shadow: 0 2px 24px rgba(80, 160, 255, 0.5);
+}
+#menu h1 span { color: #4ea3ff; }
+
+.tag { margin: 10px 0 26px; color: #9fb4d0; font-size: 15px; }
+
+#startBtn {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #041224;
+  background: linear-gradient(180deg, #6bc0ff, #2f8ff0);
+  border: none;
+  border-radius: 10px;
+  padding: 14px 42px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(47, 143, 240, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+#startBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(47, 143, 240, 0.6); }
+#startBtn:active { transform: translateY(0); }
+
+.controls {
+  display: flex;
+  gap: 40px;
+  justify-content: center;
+  margin: 34px 0 8px;
+  text-align: left;
+}
+.controls h3 {
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #4ea3ff;
+  margin-bottom: 10px;
+}
+.key { font-size: 14px; color: #c4d4ea; margin: 7px 0; }
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  text-align: center;
+  padding: 2px 7px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #eaf3ff;
+  background: rgba(120, 170, 230, 0.14);
+  border: 1px solid rgba(140, 190, 255, 0.35);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
+
+.hint { margin-top: 22px; font-size: 13px; color: #7f93b0; font-style: italic; }
+
+/* ---------- In-game badges ---------- */
+.badge {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 210, 90, 0.5);
+  color: #ffd25a;
+  font-weight: 700;
+  letter-spacing: 2px;
+  z-index: 15;
+}
+
+.msg {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 22px 46px;
+  border-radius: 14px;
+  background: rgba(6, 12, 22, 0.82);
+  border: 1px solid rgba(120, 180, 255, 0.4);
+  text-align: center;
+  z-index: 15;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.msg .big { font-size: 34px; font-weight: 800; letter-spacing: 3px; }
+.msg .sub { margin-top: 8px; font-size: 15px; color: #9fb4d0; }
+.msg.good { border-color: rgba(90, 230, 140, 0.6); }
+.msg.good .big { color: #6bffa0; text-shadow: 0 0 24px rgba(90, 230, 140, 0.5); }
+.msg.bad { border-color: rgba(255, 90, 90, 0.6); }
+.msg.bad .big { color: #ff6b6b; text-shadow: 0 0 24px rgba(255, 90, 90, 0.5); }
+
+.hidden { display: none !important; }

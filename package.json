@@ -1,0 +1,9 @@
+{
+  "name": "flightsim",
+  "version": "1.0.0",
+  "description": "A self-contained 3D flight simulator game that runs in the browser — no engine, no dependencies.",
+  "scripts": {
+    "test": "node test/sim.test.js"
+  },
+  "license": "MIT"
+}
