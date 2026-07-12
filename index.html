@@ -25,10 +25,41 @@
       </div>
     </div>
     <p class="hint">Tip: keep your airspeed up on final approach and touch down gently on the runway.</p>
+    <p class="hint phoneonly">📱 On a phone: hold it in landscape and <b>tilt to steer</b> — throttle, rudder and buttons are on screen.</p>
   </div>
 </div>
 
 <div id="pausebadge" class="badge hidden">PAUSED — press P</div>
 <div id="msg" class="msg hidden"></div>
+
+<!-- On-screen controls (shown only on touch devices) -->
+<div id="touch">
+  <div id="throttle" title="Throttle">
+    <div id="thrfill"></div>
+    <span class="tlabel">THR</span>
+  </div>
+
+  <div id="stick" title="Pitch / Roll"><div id="sticknub"></div></div>
+
+  <div id="rudder">
+    <button id="rudl" aria-label="Rudder left">◀</button>
+    <button id="rudr" aria-label="Rudder right">▶</button>
+  </div>
+
+  <div id="actionbtns">
+    <button data-k="tilt">TILT</button>
+    <button data-k="center">↺ CENTER</button>
+    <button data-k="cam">CAM</button>
+    <button data-k="gear">GEAR</button>
+    <button data-k="reset">RESET</button>
+  </div>
+
+  <div id="touchhint" class="hidden"></div>
+</div>
+
+<div id="rotatehint" class="hidden">
+  <div class="phone">📱↻</div>
+  Rotate to landscape for the best view
+</div>
 
 <script src="main.js"></script>

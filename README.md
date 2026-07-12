@@ -41,6 +41,28 @@ goal: fly around, and grease a landing back on the runway.
 | **R** | Reset / respawn |
 | **P** | Pause |
 
+## Play on your phone 📱 (tilt to fly)
+
+Open the site on a phone, turn it to **landscape**, and tap **Start Flight**.
+On the first tap it asks for motion permission (iOS) and then **you steer by
+tilting the phone** — like the plane is in your hands.
+
+![Phone HUD with on-screen controls](screenshots/mobile.png)
+
+| Control | What it does |
+| --- | --- |
+| **Tilt the phone** | Pitch & roll — tilt forward/back to climb/dive, tilt sideways to bank |
+| **Throttle slider** (left) | Drag up/down for power |
+| **◀ ▶** (bottom) | Rudder / yaw |
+| **TILT** | Toggle tilt flying on/off (falls back to an on-screen stick) |
+| **↺ CENTER** | Re-zero the tilt to however you're holding the phone |
+| **CAM · GEAR · RESET** | Camera, landing gear, respawn |
+
+With tilt **off**, a virtual joystick appears at bottom-right for pitch/roll, so
+the game is fully playable either way. The HUD switches to a compact,
+touch-friendly layout automatically. Tilt requires a device with a gyroscope
+and (on iOS) HTTPS — so it works great on your deployed Vercel URL.
+
 ## How to land
 
 1. Line up with the runway (heading **360 / N**) and descend gently.
@@ -68,6 +90,9 @@ Everything is written from first principles:
 - **Glass-cockpit HUD** — attitude indicator with pitch ladder and roll pointer,
   airspeed and altitude tapes, a heading tape, throttle/vertical-speed/gear
   readouts, and a stall warning.
+- **Phone controls** — gyroscope tilt steering (with iOS motion-permission
+  handling and re-centering), on-screen throttle/joystick/rudder/buttons, a
+  landscape prompt, and an auto compact HUD — all from the same `main.js`.
 
 ## Project layout
 

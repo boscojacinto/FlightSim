@@ -15,17 +15,28 @@ function fakeCtx() {
 function fakeEl() {
   return {
     getContext: () => fakeCtx(),
-    addEventListener: noop,
+    addEventListener: noop, removeEventListener: noop,
+    setPointerCapture: noop, getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
     classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
-    style: {}, width: 1280, height: 720,
+    querySelectorAll: () => [], style: {}, dataset: {}, width: 1280, height: 720,
   };
 }
 const sandbox = {
-  window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, addEventListener: noop },
-  document: { getElementById: () => fakeEl() },
+  window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
+            addEventListener: noop, removeEventListener: noop },
+  document: {
+    getElementById: () => fakeEl(),
+    querySelector: () => fakeEl(),
+    querySelectorAll: () => [],
+    documentElement: { requestFullscreen: noop },
+    body: { classList: { add: noop, remove: noop, toggle: noop, contains: () => false } },
+  },
+  screen: { orientation: { angle: 90, lock: () => Promise.resolve() } },
+  matchMedia: () => ({ matches: false }),
   performance: { now: () => Date.now() },
   requestAnimationFrame: noop,
-  Math, console, Object, Array, String, Number, JSON, isNaN, isFinite,
+  setTimeout: noop, clearTimeout: noop,
+  Math, console, Object, Array, String, Number, JSON, isNaN, isFinite, Promise,
 };
 sandbox.global = sandbox;
 

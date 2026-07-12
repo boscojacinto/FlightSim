@@ -161,17 +161,30 @@ function stepPhysics(dt) {
   const fwd = mul(R, { x: 0, y: 0, z: 1 });
   const authority = clamp(ac.speed / CRUISE, 0.15, 1.3); // sluggish when slow
 
-  // --- Control inputs -> angular rates (W = nose up) ---
-  const pitchIn = (keyDown("KeyW") ? 1 : 0) - (keyDown("KeyS") ? 1 : 0);
-  const rollIn  = (keyDown("KeyD") ? 1 : 0) - (keyDown("KeyA") ? 1 : 0);
-  const yawIn   = (keyDown("KeyE") ? 1 : 0) - (keyDown("KeyQ") ? 1 : 0);
+  // --- Control inputs. Three sources are blended: keyboard, the on-screen
+  //     touch joystick, and (on phones) positional tilt from the gyroscope. ---
+  const kbPitch = (keyDown("KeyW") ? 1 : 0) - (keyDown("KeyS") ? 1 : 0);
+  const kbRoll  = (keyDown("KeyD") ? 1 : 0) - (keyDown("KeyA") ? 1 : 0);
+  const kbYaw   = (keyDown("KeyE") ? 1 : 0) - (keyDown("KeyQ") ? 1 : 0);
+  const pitchIn = clamp(kbPitch + touch.pitch, -1, 1);
+  const rollIn  = clamp(kbRoll + touch.roll, -1, 1);
+  const yawIn   = clamp(kbYaw + touch.yaw, -1, 1);
 
-  ac.pitch += pitchIn * 1.1 * authority * dt;
-  ac.roll  += rollIn  * 2.2 * authority * dt;
-  ac.yaw   += yawIn   * 0.7 * authority * dt;
-
-  // Gentle roll self-levelling when hands off the ailerons.
-  if (rollIn === 0 && !ac.onGround) ac.roll -= ac.roll * 0.6 * dt;
+  if (tilt.active) {
+    // Positional: the phone's tilt angle *is* the target attitude, so holding a
+    // steady tilt holds a steady bank/pitch (unlike a rate stick).
+    const tR = clamp(tilt.roll, -1.25, 1.25);
+    const tP = clamp(tilt.pitch, -0.9, 0.9);
+    ac.roll  += (tR - ac.roll) * 3.6 * dt;
+    ac.pitch += (tP - ac.pitch) * 3.0 * dt;
+    ac.pitch += pitchIn * 0.4 * authority * dt; // fine trim still available
+  } else {
+    ac.pitch += pitchIn * 1.1 * authority * dt;
+    ac.roll  += rollIn  * 2.2 * authority * dt;
+    // Gentle roll self-levelling when hands off the ailerons.
+    if (rollIn === 0 && !ac.onGround) ac.roll -= ac.roll * 0.6 * dt;
+  }
+  ac.yaw += yawIn * 0.7 * authority * dt;
 
   // Banked turns: lift's horizontal component yaws the nose (coordinated turn).
   if (!ac.onGround) {
@@ -182,7 +195,8 @@ function stepPhysics(dt) {
   ac.yaw = (ac.yaw + Math.PI * 2) % (Math.PI * 2);
   ac.roll = ((ac.roll + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
 
-  // --- Throttle ---
+  // --- Throttle (keyboard nudges; the touch slider sets it directly) ---
+  if (touch.throttleSet != null) ac.throttle = touch.throttleSet;
   if (keyDown("ShiftLeft") || keyDown("ShiftRight")) ac.throttle += 0.6 * dt;
   if (keyDown("ControlLeft") || keyDown("ControlRight")) ac.throttle -= 0.6 * dt;
   ac.throttle = clamp(ac.throttle, 0, 1);
@@ -285,9 +299,10 @@ function fillPoly(csPoly, color) {
 function drawSky() {
   // Sky gradient; where the ground meets it, terrain tiles paint over.
   const horizonY = Hp / 2 + focal * Math.tan(ac.pitch); // approx, cosmetic only
+  const stop = clamp(Number.isFinite(horizonY) ? horizonY / Hp : 0.5, 0.05, 0.95) * 0.9;
   const g = ctx.createLinearGradient(0, 0, 0, Hp);
   g.addColorStop(0, rgb(SKY_TOP));
-  g.addColorStop(clamp(horizonY / Hp, 0.05, 0.95) * 0.9, rgb([130, 180, 232]));
+  g.addColorStop(stop, rgb([130, 180, 232]));
   g.addColorStop(1, rgb(SKY_HORIZON));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, Wp, Hp);
@@ -467,6 +482,7 @@ function drawAircraftModel() {
 /* -------------------------------------------------------------------------- *
  *  HUD                                                                        *
  * -------------------------------------------------------------------------- */
+let compactHud = false; // switched on for touch devices (frees the edges)
 function drawHUD() {
   const KN = ac.speed * 1.94384;     // m/s -> knots
   const FT = ac.pos.y * 3.28084;     // m -> feet
@@ -537,10 +553,15 @@ function drawHUD() {
   ctx.fill();
   ctx.restore();
 
-  // --- Left tape: airspeed ---
-  tape(70, cy, "SPD", Math.round(KN), "kt");
-  // --- Right tape: altitude ---
-  tape(Wp - 70, cy, "ALT", Math.round(FT), "ft", true);
+  // --- Airspeed / altitude. On phones the screen edges belong to the on-screen
+  //     controls, so use compact top-corner readouts instead of tall tapes. ---
+  if (compactHud) {
+    readout(78, 78, "SPD", Math.round(KN), "kt");
+    readout(Wp - 78, 78, "ALT", Math.round(FT), "ft");
+  } else {
+    tape(70, cy, "SPD", Math.round(KN), "kt");
+    tape(Wp - 70, cy, "ALT", Math.round(FT), "ft", true);
+  }
 
   // Heading tape (top).
   ctx.textAlign = "center";
@@ -565,24 +586,34 @@ function drawHUD() {
   ctx.beginPath(); ctx.moveTo(cx, 44); ctx.lineTo(cx - 5, 50); ctx.lineTo(cx + 5, 50); ctx.closePath(); ctx.fill();
   ctx.fillText(String(Math.round(HDG)).padStart(3, "0"), cx, 60);
 
-  // --- Bottom-left panel: throttle + gear + vspeed ---
-  const px = 26, py = Hp - 118;
-  ctx.textAlign = "left";
-  ctx.font = "12px monospace";
-  ctx.fillText("THR", px, py);
-  ctx.strokeRect(px + 34, py - 7, 120, 12);
-  ctx.fillRect(px + 34, py - 7, 120 * ac.throttle, 12);
-  ctx.fillText(Math.round(ac.throttle * 100) + "%", px + 164, py);
+  if (compactHud) {
+    // Vertical speed + gear sit under the altitude readout, clear of controls.
+    ctx.textAlign = "right";
+    ctx.font = "12px monospace";
+    ctx.fillText((FPM >= 0 ? "+" : "") + Math.round(FPM / 10) * 10 + " fpm", Wp - 20, 120);
+    ctx.fillStyle = ac.gearDown ? "#4dffa0" : "#ffb14d";
+    ctx.fillText("GEAR " + (ac.gearDown ? "DN" : "UP"), Wp - 20, 138);
+    ctx.fillStyle = green;
+  } else {
+    // --- Bottom-left panel: throttle + gear + vspeed ---
+    const px = 26, py = Hp - 118;
+    ctx.textAlign = "left";
+    ctx.font = "12px monospace";
+    ctx.fillText("THR", px, py);
+    ctx.strokeRect(px + 34, py - 7, 120, 12);
+    ctx.fillRect(px + 34, py - 7, 120 * ac.throttle, 12);
+    ctx.fillText(Math.round(ac.throttle * 100) + "%", px + 164, py);
 
-  ctx.fillText("V/S", px, py + 22);
-  ctx.fillText((FPM >= 0 ? "+" : "") + Math.round(FPM / 10) * 10 + " fpm", px + 34, py + 22);
+    ctx.fillText("V/S", px, py + 22);
+    ctx.fillText((FPM >= 0 ? "+" : "") + Math.round(FPM / 10) * 10 + " fpm", px + 34, py + 22);
 
-  ctx.fillText("GEAR", px, py + 44);
-  ctx.fillStyle = ac.gearDown ? "#4dffa0" : "#ffb14d";
-  ctx.fillText(ac.gearDown ? "DOWN" : "UP", px + 44, py + 44);
-  ctx.fillStyle = green;
+    ctx.fillText("GEAR", px, py + 44);
+    ctx.fillStyle = ac.gearDown ? "#4dffa0" : "#ffb14d";
+    ctx.fillText(ac.gearDown ? "DOWN" : "UP", px + 44, py + 44);
+    ctx.fillStyle = green;
 
-  ctx.fillText("HDG " + String(Math.round(HDG)).padStart(3, "0"), px, py + 66);
+    ctx.fillText("HDG " + String(Math.round(HDG)).padStart(3, "0"), px, py + 66);
+  }
 
   // Stall warning.
   if (ac.speed < STALL && !ac.onGround && !ac.crashed) {
@@ -625,6 +656,23 @@ function drawHUD() {
     ctx.fillText(unit, x, cyy + 22);
     ctx.restore();
   }
+
+  // Compact boxed readout for phones (top corners).
+  function readout(x, y, label, val, unit) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x - 52, y - 20, 104, 40);
+    ctx.strokeStyle = green;
+    ctx.strokeRect(x - 52, y - 20, 104, 40);
+    ctx.fillStyle = green;
+    ctx.font = "10px monospace";
+    ctx.fillText(label, x - 30, y - 6);
+    ctx.fillText(unit, x + 34, y - 6);
+    ctx.font = "bold 20px monospace";
+    ctx.fillText(String(val), x, y + 8);
+    ctx.restore();
+  }
 }
 
 /* -------------------------------------------------------------------------- *
@@ -632,6 +680,16 @@ function drawHUD() {
  * -------------------------------------------------------------------------- */
 const keys = Object.create(null);
 const keyDown = (code) => !!keys[code];
+
+// Touch (on-screen joystick / rudder / throttle) and tilt (gyroscope) inputs.
+// stepPhysics() reads these every frame alongside the keyboard.
+const touch = { pitch: 0, roll: 0, yaw: 0, throttleSet: null };
+const tilt = {
+  active: false, supported: false,
+  pitch: 0, roll: 0,          // -1..1 target deflection after calibration
+  curP: 0, curR: 0,           // latest raw reading (degrees, axis-mapped)
+  refP: 0, refR: 0,           // calibration reference captured on "recenter"
+};
 window.addEventListener("keydown", (e) => {
   keys[e.code] = true;
   if (["KeyW","KeyA","KeyS","KeyD","KeyQ","KeyE","ShiftLeft","ShiftRight",
@@ -645,6 +703,175 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+
+/* -------------------------------------------------------------------------- *
+ *  Phone controls: tilt (gyroscope) + on-screen touch                         *
+ * -------------------------------------------------------------------------- */
+
+// Map raw DeviceOrientation (beta/gamma, in the phone's natural portrait frame)
+// into pitch/roll for the current screen orientation. Designed for landscape.
+function onDeviceOrientation(e) {
+  if (e.beta == null || e.gamma == null) return;
+  tilt.supported = true;
+  const angle =
+    (screen.orientation && typeof screen.orientation.angle === "number")
+      ? screen.orientation.angle
+      : (window.orientation || 0);
+  const b = e.beta, g = e.gamma;
+  let pitchDeg, rollDeg;
+  if (angle === 90) { pitchDeg = -g; rollDeg = -b; }        // landscape-primary
+  else if (angle === 270 || angle === -90) { pitchDeg = g; rollDeg = b; } // other way
+  else if (angle === 180) { pitchDeg = -(b - 45); rollDeg = -g; }         // upside-down portrait
+  else { pitchDeg = b - 45; rollDeg = g; }                  // portrait (tilt ~45° = neutral)
+
+  tilt.curP = pitchDeg;
+  tilt.curR = rollDeg;
+  const DEFLECT = 35; // degrees of tilt for full control deflection
+  tilt.pitch = clamp((pitchDeg - tilt.refP) / DEFLECT, -1.25, 1.25);
+  tilt.roll  = clamp((rollDeg - tilt.refR) / DEFLECT, -1.4, 1.4);
+}
+function recenterTilt() { tilt.refP = tilt.curP; tilt.refR = tilt.curR; }
+
+// Enable tilt, requesting permission on iOS 13+ (must be from a user gesture).
+async function enableTilt() {
+  try {
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function") {
+      const res = await DOE.requestPermission();
+      if (res !== "granted") { flashHint("Motion access denied — using touch"); return false; }
+    }
+    window.addEventListener("deviceorientation", onDeviceOrientation, true);
+    tilt.active = true;
+    setTimeout(recenterTilt, 250); // calibrate to however the phone is being held
+    syncTiltButton();
+    flashHint("Tilt ON — hold level, then tilt to fly");
+    return true;
+  } catch (err) {
+    flashHint("Tilt unavailable on this device");
+    return false;
+  }
+}
+function disableTilt() {
+  window.removeEventListener("deviceorientation", onDeviceOrientation, true);
+  tilt.active = false; tilt.pitch = 0; tilt.roll = 0;
+  syncTiltButton();
+}
+function syncTiltButton() {
+  const btn = document.querySelector('[data-k="tilt"]');
+  if (btn) { btn.classList.toggle("on", tilt.active); btn.textContent = tilt.active ? "TILT ✓" : "TILT"; }
+  const stick = document.getElementById("stick");
+  if (stick) stick.classList.toggle("hidden", tilt.active); // tilt replaces the attitude stick
+}
+
+let hintTimer = 0;
+function flashHint(text) {
+  const el = document.getElementById("touchhint");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("hidden");
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => el.classList.add("hidden"), 2600);
+}
+
+// Attach a press-and-hold handler that sets `keyOrFn` while the control is held.
+function holdButton(el, onDown, onUp) {
+  if (!el) return;
+  const down = (e) => { e.preventDefault(); onDown(); };
+  const up = (e) => { e.preventDefault(); if (onUp) onUp(); };
+  el.addEventListener("pointerdown", down);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+  el.addEventListener("pointerleave", up);
+}
+
+function setupMobile() {
+  const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  if (isTouch) { document.body.classList.add("touch"); compactHud = true; }
+
+  // --- Attitude joystick (pitch/roll) ---
+  const stick = document.getElementById("stick");
+  const nub = document.getElementById("sticknub");
+  if (stick) {
+    let active = false, id = null;
+    const setFromEvent = (e) => {
+      const r = stick.getBoundingClientRect();
+      if (!r.width || !r.height) return; // hidden (e.g. tilt mode) — ignore
+      const nx = clamp((e.clientX - (r.left + r.width / 2)) / (r.width / 2), -1, 1);
+      const ny = clamp((e.clientY - (r.top + r.height / 2)) / (r.height / 2), -1, 1);
+      touch.roll = nx;
+      touch.pitch = -ny;           // push up = nose up
+      nub.style.transform = `translate(${nx * 42}px, ${ny * 42}px)`;
+    };
+    stick.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); active = true; id = e.pointerId;
+      stick.setPointerCapture(id); setFromEvent(e);
+    });
+    stick.addEventListener("pointermove", (e) => { if (active && e.pointerId === id) setFromEvent(e); });
+    const release = (e) => {
+      if (!active || (id != null && e.pointerId !== id)) return;
+      active = false; id = null;
+      touch.roll = 0; touch.pitch = 0;
+      nub.style.transform = "translate(0,0)";
+    };
+    stick.addEventListener("pointerup", release);
+    stick.addEventListener("pointercancel", release);
+  }
+
+  // --- Throttle slider (vertical) ---
+  const thr = document.getElementById("throttle");
+  const thrFill = document.getElementById("thrfill");
+  if (thr) {
+    let active = false, id = null;
+    const setFromEvent = (e) => {
+      const r = thr.getBoundingClientRect();
+      if (!r.height) return;
+      const v = clamp(1 - (e.clientY - r.top) / r.height, 0, 1);
+      touch.throttleSet = v;
+      if (started && running) ac.throttle = v;
+      thrFill.style.height = (v * 100) + "%";
+    };
+    thr.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); active = true; id = e.pointerId;
+      thr.setPointerCapture(id); setFromEvent(e);
+    });
+    thr.addEventListener("pointermove", (e) => { if (active && e.pointerId === id) setFromEvent(e); });
+    const release = (e) => {
+      if (!active || (id != null && e.pointerId !== id)) return;
+      active = false; id = null; touch.throttleSet = null; // hand back to keyboard
+    };
+    thr.addEventListener("pointerup", release);
+    thr.addEventListener("pointercancel", release);
+  }
+
+  // --- Rudder buttons ---
+  holdButton(document.getElementById("rudl"), () => (touch.yaw = -1), () => (touch.yaw = 0));
+  holdButton(document.getElementById("rudr"), () => (touch.yaw = 1), () => (touch.yaw = 0));
+
+  // --- Action buttons ---
+  const act = {
+    tilt: () => (tilt.active ? disableTilt() : enableTilt()),
+    center: () => { recenterTilt(); flashHint("Re-centered"); },
+    cam: () => { if (running) camMode = camMode ? 0 : 1; },
+    gear: () => { if (running) ac.gearDown = !ac.gearDown; },
+    reset: () => resetFlight(),
+  };
+  document.querySelectorAll("#actionbtns button").forEach((btn) => {
+    btn.addEventListener("pointerdown", (e) => { e.preventDefault(); act[btn.dataset.k](); });
+  });
+
+  updateOrientationHint();
+  window.addEventListener("orientationchange", () => setTimeout(updateOrientationHint, 200));
+  window.addEventListener("resize", updateOrientationHint);
+}
+
+// Nudge the player to landscape while in portrait on a phone.
+function updateOrientationHint() {
+  const el = document.getElementById("rotatehint");
+  if (!el) return;
+  const portrait = window.innerHeight > window.innerWidth;
+  const phone = document.body.classList.contains("touch");
+  el.classList.toggle("hidden", !(phone && portrait && started));
+}
 
 /* -------------------------------------------------------------------------- *
  *  Game state + loop                                                          *
@@ -662,8 +889,26 @@ function startGame() {
   paused = false;
   overlay.classList.add("hidden");
   resetFlight();
+
+  // On a phone, the Start tap is a user gesture — the moment iOS lets us ask
+  // for motion access. Turn tilt on by default and go fullscreen/landscape.
+  if (document.body.classList.contains("touch")) {
+    enableTilt();
+    goImmersive();
+  }
+  updateOrientationHint();
+
   lastT = performance.now();
   requestAnimationFrame(loop);
+}
+
+function goImmersive() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { try { req.call(el); } catch (e) {} }
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock("landscape").catch(() => {});
+  }
 }
 function resetFlight() {
   ac = SPAWN();
@@ -700,11 +945,15 @@ function loop(now) {
       for (let i = 0; i < steps; i++) stepPhysics(dt / steps);
     }
     render();
+    // Keep the on-screen throttle slider in sync when it isn't being dragged.
+    if (touch.throttleSet == null && thrFillEl) thrFillEl.style.height = (ac.throttle * 100) + "%";
   }
   requestAnimationFrame(loop);
 }
 
+const thrFillEl = document.getElementById("thrfill");
 document.getElementById("startBtn").addEventListener("click", startGame);
+setupMobile();
 
 // Draw a static preview frame behind the menu before the game starts.
 (function previewFrame() {
