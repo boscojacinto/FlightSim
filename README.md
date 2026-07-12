@@ -8,9 +8,19 @@ no assets, no network. Just open the file and fly.
 
 ![On final approach](screenshots/approach.png)
 
+## Deploy
+
+It's a static site (no build step), so it deploys anywhere that serves files.
+One-click on Vercel:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fboscojacinto%2FFlightSim)
+
+Or from the project directory: `npm i -g vercel && vercel`.
+
 ## Play
 
-Open **`index.html`** in a browser and click **Start Flight**.
+Open **`index.html`** in a browser and click **Start Flight** — or visit your
+deployed URL.
 
 That's it — everything (the 3D renderer, the flight physics, the terrain and the
 head-up display) is hand-written and self-contained in `main.js`.
