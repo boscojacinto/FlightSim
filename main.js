@@ -98,26 +98,49 @@ function corridorClear(x, z) {
   return clamp((Math.abs(x) - CORRIDOR.halfW) / CORRIDOR.ramp, 0, 1);
 }
 
-// Smooth rolling terrain height (metres) away from the airfield and corridor.
+// --- Mumbai geography ---------------------------------------------------------
+// The Arabian Sea lies to the west (−x); the city is the land to the east. The
+// shoreline is a wandering north–south curve, giving bays and headlands.
+function shoreX(z) {
+  return -1300
+    + Math.sin(z * 0.00085) * 320        // large bays (e.g. Back Bay / Mahim)
+    + Math.sin(z * 0.0022 + 1.1) * 120;  // smaller inlets
+}
+function isWater(x, z) { return x < shoreX(z); }
+
+// Terrain height (metres). Sea is flat at 0; the city is low-lying with a couple
+// of gentle rises (think Malabar Hill), staying flat over the airfield/approach.
 function terrainHeight(x, z) {
+  if (x < shoreX(z)) return 0; // sea surface
+  const inland = x - shoreX(z);
+  let h = 5 + Math.min(inland * 0.015, 26);
+  h += Math.max(0, Math.sin(x * 0.0011 + 2) * Math.cos(z * 0.0013)) * 34; // hills
   const d = Math.hypot(x, z);
-  const flat = clamp((d - 900) / 1600, 0, 1);          // keep the airfield flat
-  const factor = Math.min(flat, corridorClear(x, z));  // and the approach valley
-  const h =
-    Math.sin(x * 0.0016) * Math.cos(z * 0.0013) * 90 +
-    Math.sin(x * 0.0007 + 1.3) * Math.cos(z * 0.0009 - 0.7) * 220 +
-    Math.sin((x + z) * 0.0032) * 26;
-  return Math.max(0, h) * factor;
+  const factor = Math.min(clamp((d - 900) / 1600, 0, 1), corridorClear(x, z));
+  return h * factor;
 }
 
-// Terrain colour by height, blended toward fog with distance.
-function groundColor(h, fog) {
-  let base;
-  if (h < 4)        base = [74, 118, 66];   // lowland grass
-  else if (h < 90)  base = [86, 128, 70];   // hills
-  else if (h < 200) base = [110, 116, 84];  // highland
-  else if (h < 300) base = [130, 126, 118]; // rock
-  else              base = [232, 238, 245];  // snow
+// Sea colour by how far offshore, blended toward fog with distance.
+function seaColor(x, z, fog) {
+  const depth = clamp((shoreX(z) - x) / 1400, 0, 1);
+  const base = [
+    Math.round(lerp(70, 26, depth)),
+    Math.round(lerp(150, 78, depth)),
+    Math.round(lerp(176, 128, depth)),
+  ];
+  return blendFog(base, fog);
+}
+// Land colour: sandy at the water's edge, then dense-city greyish-green.
+function groundColor(x, z, h, fog) {
+  const beach = clamp(1 - (x - shoreX(z)) / 90, 0, 1);
+  const urban = [96, 108, 92];
+  const sand = [214, 200, 162];
+  const base = [
+    Math.round(lerp(urban[0], sand[0], beach)),
+    Math.round(lerp(urban[1], sand[1], beach)),
+    Math.round(lerp(urban[2], sand[2], beach)),
+  ];
+  if (h > 22) { base[0] -= 6; base[1] += 4; } // greener on the hills
   return blendFog(base, fog);
 }
 function blendFog(rgb, fog) {
@@ -337,10 +360,16 @@ function drawTerrain() {
         const fog = clamp((dist - far * 0.35) / (far * 0.65), 0, 1);
         const avgH = (h00 + h10 + h11 + h01) / 4;
 
-        // Cheap directional shading from the terrain slope.
-        const slope = (h10 - h00) + (h11 - h01);
-        const shade = clamp(1 - slope * 0.0016, 0.72, 1.12);
-        let col = groundColor(avgH, fog);
+        let col, shade;
+        if (isWater(centre.x, centre.z)) {
+          // Faint static ripple banding so the sea isn't a flat sheet.
+          shade = 1 + 0.05 * Math.sin(centre.x * 0.012) * Math.sin(centre.z * 0.01);
+          col = seaColor(centre.x, centre.z, fog);
+        } else {
+          const slope = (h10 - h00) + (h11 - h01); // cheap directional shading
+          shade = clamp(1 - slope * 0.0016, 0.8, 1.1);
+          col = groundColor(centre.x, centre.z, avgH, fog);
+        }
         col = [
           clamp(Math.round(col[0] * shade), 0, 255),
           clamp(Math.round(col[1] * shade), 0, 255),
@@ -390,58 +419,150 @@ function drawRunway() {
   }
 }
 
-// A mountain = 4-sided pyramid. Scatter them deterministically around the plane.
-function drawMountains() {
-  const S = 700;
-  const cx = Math.round(ac.pos.x / S);
-  const cz = Math.round(ac.pos.z / S);
+const scaleC = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
+
+// Draw an axis-aligned box (a building or bridge segment): the camera-facing
+// walls (back-face culled) plus the roof.
+function drawBox(x0, z0, x1, z1, top, base, cols, roofCol) {
+  const cp = camPos;
+  const wall = (ax, az, bx2, bz2, col) => fillPoly([
+    project({ x: ax, y: base, z: az }), project({ x: bx2, y: base, z: bz2 }),
+    project({ x: bx2, y: top, z: bz2 }), project({ x: ax, y: top, z: az }),
+  ], col);
+  if (cp.x < x0) wall(x0, z0, x0, z1, cols.w);
+  if (cp.x > x1) wall(x1, z1, x1, z0, cols.e);
+  if (cp.z < z0) wall(x1, z0, x0, z0, cols.s);
+  if (cp.z > z1) wall(x0, z1, x1, z1, cols.n);
+  if (cp.y > top) fillPoly([
+    project({ x: x0, y: top, z: z0 }), project({ x: x1, y: top, z: z0 }),
+    project({ x: x1, y: top, z: z1 }), project({ x: x0, y: top, z: z1 }),
+  ], roofCol);
+}
+
+// Mumbai skyline: procedural blocks of towers hugging the coast, tallest at the
+// waterfront and around a downtown cluster (Nariman Point / Lower Parel-ish).
+const CITY = { block: 100, cull: 3200 };
+function drawCity() {
+  const B = CITY.block;
+  const cix = Math.round(ac.pos.x / B), ciz = Math.round(ac.pos.z / B);
+  const R = Math.ceil(CITY.cull / B);
   const list = [];
-  for (let gx = -6; gx <= 6; gx++) {
-    for (let gz = -6; gz <= 6; gz++) {
-      const ix = cx + gx, iz = cz + gz;
-      const r = hash2(ix, iz);
-      if (r < 0.55) continue; // not every cell has a peak
-      const ox = (hash2(ix + 7, iz) - 0.5) * S * 0.7;
-      const oz = (hash2(ix, iz + 7) - 0.5) * S * 0.7;
-      const bx = ix * S + ox, bz = iz * S + oz;
-      if (Math.hypot(bx, bz) < 1100) continue; // keep peaks clear of the field
-      // Keep the approach corridor (and its ramped shoulders) free of peaks.
-      if (bz > CORRIDOR.z0 - 400 && bz < CORRIDOR.z1 + 400 &&
-          Math.abs(bx) < CORRIDOR.halfW + CORRIDOR.ramp + 400) continue;
-      const baseH = terrainHeight(bx, bz);
-      const height = 260 + hash2(ix + 3, iz + 3) * 620;
-      const rad = 180 + hash2(ix + 5, iz + 1) * 220;
-      const dist = Math.hypot(bx - ac.pos.x, bz - ac.pos.z);
-      if (dist > 6500) continue;
-      list.push({ bx, bz, baseH, height, rad, dist });
+  for (let gx = -R; gx <= R; gx++) {
+    for (let gz = -R; gz <= R; gz++) {
+      const ix = cix + gx, iz = ciz + gz;
+      const cxw = ix * B + B / 2, czw = iz * B + B / 2;
+      if (isWater(cxw, czw)) continue;
+      const inland = cxw - shoreX(czw);
+      if (inland < 30 || inland > 1500) continue;      // coastal city strip only
+      if (Math.abs(cxw) < 700 && czw > -3600 && czw < 900) continue; // airport/approach
+      if (hash2(ix * 3 + 11, iz * 5 - 7) > 0.84 - inland * 0.00035) continue; // density
+      const dist = Math.hypot(cxw - ac.pos.x, czw - ac.pos.z);
+      if (dist > CITY.cull) continue;
+      const coastBias = clamp(1 - inland / 1200, 0, 1);
+      const dtBias = clamp(1 - Math.hypot(cxw + 1050, czw - 250) / 1400, 0, 1);
+      const r = hash2(ix * 7 - 3, iz * 9 + 5);
+      const base = terrainHeight(cxw, czw);
+      const h = base + 22 + r * r * (60 + 170 * coastBias + 230 * dtBias);
+      const m = 14 + r * 8;
+      list.push({
+        x0: ix * B + m, z0: iz * B + m, x1: (ix + 1) * B - m, z1: (iz + 1) * B - m,
+        top: h, base, dist, glass: hash2(ix - 2, iz + 4) > 0.5,
+        fog: clamp((dist - 1500) / 1900, 0, 1),
+      });
     }
   }
-  list.sort((a, b) => b.dist - a.dist); // far to near
+  list.sort((a, b) => b.dist - a.dist);
 
+  for (const b of list) {
+    const tone = b.glass ? [120, 150, 186] : [148, 149, 156];
+    const cols = {
+      w: rgb(blendFog(scaleC(tone, 1.12), b.fog)),
+      e: rgb(blendFog(scaleC(tone, 0.84), b.fog)),
+      s: rgb(blendFog(scaleC(tone, 0.94), b.fog)),
+      n: rgb(blendFog(scaleC(tone, 1.03), b.fog)),
+    };
+    drawBox(b.x0, b.z0, b.x1, b.z1, b.top, b.base, cols, rgb(blendFog(scaleC(tone, 0.68), b.fog)));
+
+    // Antenna + blinking aviation light on the tallest towers.
+    if (b.top - b.base > 210 && b.dist < 2600) {
+      const mx = (b.x0 + b.x1) / 2, mz = (b.z0 + b.z1) / 2;
+      const a = project({ x: mx, y: b.top, z: mz }), t = project({ x: mx, y: b.top + 26, z: mz });
+      if (a.z > NEAR && t.z > NEAR) {
+        const sa = toScreen(a), st = toScreen(t);
+        ctx.strokeStyle = "rgba(40,44,52,0.85)"; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(sa.x, sa.y); ctx.lineTo(st.x, st.y); ctx.stroke();
+        if (Math.floor(performance.now() / 600) % 2 === 0) {
+          ctx.fillStyle = "#ff5a5a";
+          ctx.beginPath(); ctx.arc(st.x, st.y, 2.2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+// The Bandra–Worli Sea Link — a cable-stayed bridge out over the Arabian Sea.
+function drawSeaLink() {
+  const bx = -1750, z0 = 200, z1 = 2100, w = 11, deckY = 15;
+  const dist = Math.hypot(bx - ac.pos.x, (z0 + z1) / 2 - ac.pos.z);
+  if (dist > 7500) return;
+  const fog = clamp((dist - 2600) / 4500, 0, 1);
+  drawBox(bx - w, z0, bx + w, z1, deckY, 7, {
+    w: rgb(blendFog([152, 154, 160], fog)), e: rgb(blendFog([120, 122, 128], fog)),
+    s: rgb(blendFog([136, 138, 144], fog)), n: rgb(blendFog([136, 138, 144], fog)),
+  }, rgb(blendFog([172, 174, 180], fog)));
+
+  for (const pz of [z0 + (z1 - z0) * 0.34, z0 + (z1 - z0) * 0.66]) {
+    const topY = deckY + 120;
+    drawBox(bx - 3, pz - 3, bx + 3, pz + 3, topY, deckY, {
+      w: rgb(blendFog([196, 198, 204], fog)), e: rgb(blendFog([150, 152, 158], fog)),
+      s: rgb(blendFog([172, 174, 180], fog)), n: rgb(blendFog([172, 174, 180], fog)),
+    }, rgb(blendFog([206, 208, 214], fog)));
+
+    const a = project({ x: bx, y: topY, z: pz });
+    if (a.z > NEAR) {
+      const sa = toScreen(a);
+      ctx.strokeStyle = `rgba(232,236,244,${(1 - fog) * 0.8})`;
+      ctx.lineWidth = 1;
+      for (let k = 1; k <= 6; k++) for (const dir of [-1, 1]) {
+        const pd = project({ x: bx, y: deckY + 1, z: pz + dir * (k / 6) * (z1 - z0) * 0.28 });
+        if (pd.z <= NEAR) continue;
+        const sd = toScreen(pd);
+        ctx.beginPath(); ctx.moveTo(sa.x, sa.y); ctx.lineTo(sd.x, sd.y); ctx.stroke();
+      }
+    }
+  }
+}
+
+// Distant green hills far inland (the Western Ghats) as a backdrop behind the city.
+function drawHills() {
+  const S = 900;
+  const cix = Math.round(ac.pos.x / S), ciz = Math.round(ac.pos.z / S);
+  const list = [];
+  for (let gx = -4; gx <= 9; gx++) {
+    for (let gz = -6; gz <= 6; gz++) {
+      const ix = cix + gx, iz = ciz + gz;
+      if (hash2(ix + 40, iz + 40) < 0.62) continue;
+      const bx = ix * S + (hash2(ix + 9, iz) - 0.5) * S * 0.6;
+      const bz = iz * S + (hash2(ix, iz + 9) - 0.5) * S * 0.6;
+      if (bx < shoreX(bz) + 1900) continue; // only well inland, east of the city
+      const dist = Math.hypot(bx - ac.pos.x, bz - ac.pos.z);
+      if (dist > 8000 || dist < 1600) continue;
+      list.push({ bx, bz, dist, baseH: terrainHeight(bx, bz),
+        height: 170 + hash2(ix + 2, iz + 2) * 250, rad: 260 + hash2(ix + 4, iz + 1) * 260 });
+    }
+  }
+  list.sort((a, b) => b.dist - a.dist);
   for (const m of list) {
     const apex = { x: m.bx, y: m.baseH + m.height, z: m.bz };
-    const fog = clamp((m.dist - 2500) / 4000, 0, 1);
+    const fog = clamp((m.dist - 2600) / 5000, 0, 1);
     const b = [
-      { x: m.bx - m.rad, y: m.baseH, z: m.bz - m.rad },
-      { x: m.bx + m.rad, y: m.baseH, z: m.bz - m.rad },
-      { x: m.bx + m.rad, y: m.baseH, z: m.bz + m.rad },
-      { x: m.bx - m.rad, y: m.baseH, z: m.bz + m.rad },
+      { x: m.bx - m.rad, y: m.baseH, z: m.bz - m.rad }, { x: m.bx + m.rad, y: m.baseH, z: m.bz - m.rad },
+      { x: m.bx + m.rad, y: m.baseH, z: m.bz + m.rad }, { x: m.bx - m.rad, y: m.baseH, z: m.bz + m.rad },
     ];
-    const rock = m.height > 620 ? [150, 150, 156] : [104, 112, 88];
-    const snow = m.height > 620;
     for (let i = 0; i < 4; i++) {
-      const p0 = b[i], p1 = b[(i + 1) % 4];
-      // Face shading by rough orientation.
-      const face = [0.78, 1.05, 1.15, 0.9][i];
-      let col = blendFog([rock[0] * face, rock[1] * face, rock[2] * face], fog);
-      col = col.map((v) => clamp(Math.round(v), 0, 255));
-      fillPoly([project(p0), project(p1), project(apex)], rgb(col));
-      if (snow) {
-        // Snow cap: upper portion of each face.
-        const s0 = { x: lerp(p0.x, apex.x, 0.55), y: lerp(p0.y, apex.y, 0.55), z: lerp(p0.z, apex.z, 0.55) };
-        const s1 = { x: lerp(p1.x, apex.x, 0.55), y: lerp(p1.y, apex.y, 0.55), z: lerp(p1.z, apex.z, 0.55) };
-        fillPoly([project(s0), project(s1), project(apex)], rgb(blendFog([238, 242, 248], fog)));
-      }
+      const face = [0.82, 1.05, 1.12, 0.92][i];
+      const col = blendFog(scaleC([70, 98, 64], face), fog).map((v) => clamp(Math.round(v), 0, 255));
+      fillPoly([project(b[i]), project(b[(i + 1) % 4]), project(apex)], rgb(col));
     }
   }
 }
@@ -458,8 +579,10 @@ function render() {
 
   drawSky();
   drawTerrain();
+  drawHills();
+  drawSeaLink();
   drawRunway();
-  drawMountains();
+  drawCity();
   if (camMode === 1) drawAircraftModel();
   drawHUD();
 }
@@ -960,5 +1083,5 @@ setupMobile();
   ac = SPAWN();
   viewR = orientationMatrix(ac.yaw, ac.pitch, ac.roll);
   camPos = { ...ac.pos };
-  drawSky(); drawTerrain(); drawRunway(); drawMountains();
+  drawSky(); drawTerrain(); drawHills(); drawSeaLink(); drawRunway(); drawCity();
 })();

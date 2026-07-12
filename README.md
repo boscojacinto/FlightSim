@@ -1,12 +1,14 @@
-# ✈ FlightSim
+# ✈ FlightSim — Fly over Mumbai
 
 A complete 3D flight simulator game that runs in any modern browser — built
 from scratch in plain JavaScript. No game engine, no libraries, no build step,
-no assets, no network. Just open the file and fly.
+no assets, no network. Just open the file and fly over **Mumbai**: the Arabian
+Sea, a skyline of skyscrapers, and the iconic **Bandra–Worli Sea Link**.
 
 ![HUD](https://img.shields.io/badge/renderer-canvas%202D-blue) ![deps](https://img.shields.io/badge/dependencies-0-brightgreen)
 
-![On final approach](screenshots/approach.png)
+![Mumbai skyline over the Arabian Sea](screenshots/mumbai-skyline.png)
+![The Bandra–Worli Sea Link](screenshots/mumbai-sealink.png)
 
 ## Deploy
 
@@ -65,6 +67,10 @@ and (on iOS) HTTPS — so it works great on your deployed Vercel URL.
 
 ## How to land
 
+![On final approach to the airport](screenshots/mumbai-approach.png)
+
+You spawn on final approach north of the airport, the skyline off to your left.
+
 1. Line up with the runway (heading **360 / N**) and descend gently.
 2. Keep the airspeed above the **stall** speed — watch for the red `STALL`
    warning.
@@ -81,9 +87,11 @@ Everything is written from first principles:
 - **3D engine** — a hand-rolled perspective camera with an orientation matrix
   built from yaw/pitch/roll, world→camera transform, near-plane polygon
   clipping, and a painter's-algorithm rasteriser on a plain 2D canvas.
-- **Procedural world** — deterministic rolling terrain (sine-field height map)
-  coloured by elevation, scattered snow-capped mountains, distance fog, slope
-  shading, and a striped runway.
+- **Mumbai world** — the Arabian Sea with a wandering coastline, a procedural
+  skyline of glass-and-concrete towers hugging the shore (tallest at the
+  waterfront and downtown), the cable-stayed **Bandra–Worli Sea Link** out over
+  the water, the green **Western Ghats** as a backdrop, distance fog, and the
+  airport runway you approach and land on.
 - **Flight model** — thrust/drag/gravity along the flight path, angle-of-attack
   lift with a realistic stall, speed-dependent control authority, and
   coordinated banked turns.
